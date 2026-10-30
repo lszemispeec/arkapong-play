@@ -396,23 +396,6 @@
 
   // ---------- splatter ----------
 
-  // A blob of uneven radius r with droplets and short streaks flung outward.
-  // Drawn once onto the decal layer, so it stays for the rest of the match.
-  function splat(ctx, cx, cy, r, colors, rng) {
-    var x, y, k;
-    for (y = -r; y <= r; y++) for (x = -r; x <= r; x++) {
-      var d = Math.sqrt(x * x + y * y);
-      if (d <= r * (0.45 + 0.55 * rng())) px(ctx, cx + x, cy + y, colors[d < r * 0.4 ? 1 : (rng() * colors.length) | 0]);
-    }
-    var drops = 4 + (rng() * 7 | 0);
-    for (k = 0; k < drops; k++) {
-      var dx = rng() * 2 - 1, dy = rng() * 2 - 1, len = Math.sqrt(dx * dx + dy * dy) || 1;
-      dx /= len; dy /= len;
-      var dist = r + 1 + rng() * r * 2.2, streak = rng() < 0.5 ? 1 + (rng() * 3 | 0) : 0;
-      for (var s = 0; s <= streak; s++) px(ctx, Math.round(cx + dx * (dist - s)), Math.round(cy + dy * (dist - s)), colors[(rng() * colors.length) | 0]);
-    }
-  }
-
   var BLOOD = [RED.dark, RED.deep, RED.mid];
 
   function Renderer(canvasEl) {
@@ -571,8 +554,6 @@
         if (this.ballBlood.length < 6) this.ballBlood.push({ x: rng() * 4 | 0, y: rng() * 4 | 0, c: rng() < 0.5 ? RED.mid : RED.hot });
       } else if (e.type === 'brickBreak') {
         for (k = 0; k < 26; k++) this.blood(e.x, e.y, (rng() * 2 - 1) * 80, -rng() * 90);
-        // The brick leaves a splat on the wall behind it.
-        splat(this.decals.ctx, Math.round(e.x), Math.round(e.y), 3 + (rng() * 3 | 0), BLOOD, rng);
         for (k = 0; k < 12; k++) this.particles.push({ x: e.x + (rng() * 16 - 8), y: e.y + (rng() * 8 - 4), vx: (rng() * 2 - 1) * 50, vy: -rng() * 50, c: G[6 + (rng() * 4 | 0)], life: 0.6 + rng() * 0.5, kind: 'chip' });
       } else if (e.type === 'paddleHit') {
         for (k = 0; k < 4; k++) this.particles.push({ x: e.x + 2, y: e.y + 2, vx: (e.side === 0 ? 1 : -1) * rng() * 60, vy: (rng() * 2 - 1) * 60, c: G[12], life: 0.15 + rng() * 0.1, kind: 'spark' });
@@ -592,7 +573,6 @@
         for (k = 0; k < (e.cause === 'ball' ? 30 : 18); k++) {
           this.particles.push({ x: e.x, y: e.y, vx: (rng() * 2 - 1) * 70, vy: -rng() * (e.cause === 'floor' ? 55 : 100), c: GOO[rng() * 3 | 0], life: 3, kind: 'goo' });
         }
-        splat(this.decals.ctx, Math.round(e.x), Math.round(e.y), e.cause === 'floor' ? 2 : 3 + (rng() * 2 | 0), GOO, rng);
         if (e.cause === 'ball') for (k = 0; k < 3; k++) this.ballGoo.push({ x: rng() * 4 | 0, y: rng() * 4 | 0, c: GOO[1 + (rng() * 2 | 0)] });
       } else if (e.type === 'curse') {
         this.curseFlash = 2.5;
@@ -691,8 +671,6 @@
     this.ballBlood = [];
     this.paddleStains = [[], []];
     this.dripClock = 0;
-    if (!this.decals) this.decals = canvas(C.W, C.H);
-    this.decals.ctx.clearRect(0, 0, C.W, C.H);
     this.curseFlash = 0;
     this.curseTarget = 0;
     this.brickStains = {};
@@ -723,9 +701,6 @@
         tips[i] = drawVine(ctx, this.vines[i], this.vineShown[i], pal, growing && (this.frame >> 3) % 2 ? pal.budHot : pal.bud, vivid && (this.frame >> 4) % 2);
       }
     }
-
-    // Splats on the walls of the pit.
-    ctx.drawImage(this.decals.c, 0, 0);
 
     // Floor blood.
     for (i = 0; i < this.floorStains.length; i++) px(ctx, this.floorStains[i].x, this.floorStains[i].y, this.floorStains[i].c);
