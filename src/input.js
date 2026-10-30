@@ -54,6 +54,9 @@
       this.lastDir = dir;
       this.wait = this.reaction;
       var spread = this.error + Math.max(0, b.speed - C.BALL.speed) * this.speedError;
+      // A cursed, blinking paddle is hard to place, for the CPU as well.
+      var lem = state.ext && state.ext.lem;
+      if (lem && lem.curse && lem.curse[side] > 0) spread *= 2.5;
       this.offset = (this.random() * 2 - 1) * spread;
     }
 

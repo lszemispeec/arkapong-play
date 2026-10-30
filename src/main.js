@@ -23,7 +23,10 @@
   };
   var MENU = ['pvai', 'pvp'];
 
-  // Plugins receive every rules event (see Sim.step). Power-ups go here.
+  // Rules plugins (see Sim.step). Vines are always on; lemmings is a mode
+  // switch on the title screen.
+  function loadFlag(key) { try { return localStorage.getItem(key) === '1'; } catch (e) { return false; } }
+  function saveFlag(key, v) { try { localStorage.setItem(key, v ? '1' : '0'); } catch (e) { /* private mode */ } }
   var plugins = [K.Vines];
 
   var game = {
@@ -32,13 +35,15 @@
     mode: 'demo',
     state: null,
     sources: null,
-    acc: 0
+    acc: 0,
+    lemmings: params.has('lem') ? params.get('lem') !== '0' : loadFlag('arkanog.lemmings')
   };
 
   function newMatch(mode) {
     game.mode = mode;
     game.state = Sim.create({ seed: (Math.random() * 0x7fffffff) | 0, mode: mode });
     game.sources = MODES[mode].sources();
+    plugins = game.lemmings ? [K.Vines, K.Lemmings] : [K.Vines];
     game.acc = 0;
     renderer.resetMatch();
   }
@@ -70,10 +75,12 @@
     var enter = e.key === 'Enter';
 
     if (game.screen === 'title') {
-      if (e.code === 'ArrowUp' || e.code === 'KeyW') { game.menuIndex = (game.menuIndex + MENU.length - 1) % MENU.length; sound.blip(); }
-      else if (e.code === 'ArrowDown' || e.code === 'KeyS') { game.menuIndex = (game.menuIndex + 1) % MENU.length; sound.blip(); }
+      var rows = MENU.length + 1;
+      if (e.code === 'ArrowUp' || e.code === 'KeyW') { game.menuIndex = (game.menuIndex + rows - 1) % rows; sound.blip(); }
+      else if (e.code === 'ArrowDown' || e.code === 'KeyS') { game.menuIndex = (game.menuIndex + 1) % rows; sound.blip(); }
       else if (e.code === 'Digit1') start(0);
       else if (e.code === 'Digit2') start(1);
+      else if (e.code === 'KeyL' || ((enter || e.code === 'Space') && game.menuIndex === MENU.length)) toggleLemmings();
       else if (enter || e.code === 'Space') start(game.menuIndex);
     } else if (game.screen === 'play') {
       if (e.code === 'KeyP' || e.code === 'Escape') game.screen = 'paused';
@@ -90,6 +97,13 @@
     game.menuIndex = i;
     newMatch(MENU[i]);
     game.screen = 'play';
+    sound.blip();
+  }
+  // The demo behind the title restarts so the switch shows at once.
+  function toggleLemmings() {
+    game.lemmings = !game.lemmings;
+    saveFlag('arkanog.lemmings', game.lemmings);
+    newMatch('demo');
     sound.blip();
   }
   function toTitle() { newMatch('demo'); game.screen = 'title'; }
@@ -118,13 +132,14 @@
       renderer.text('ARKANOG', cx + 1, 62, RED.deep, 3, 'center');
       renderer.text('ARKANOG', cx, 61, G[12], 3, 'center');
       renderer.text('PONG MEETS ARKANOID', cx, 89, G[8], 1, 'center');
-      for (var i = 0; i < MENU.length; i++) {
-        var sel = i === game.menuIndex, y = 112 + i * 14;
-        renderer.text((i + 1) + '  ' + MODES[MENU[i]].label, cx, y, sel ? G[12] : G[6], 1, 'center');
+      for (var i = 0; i <= MENU.length; i++) {
+        var sel = i === game.menuIndex, y = 106 + i * 13;
+        var label = i < MENU.length ? (i + 1) + '  ' + MODES[MENU[i]].label : 'L  LEMMINGS ' + (game.lemmings ? 'ON' : 'OFF');
+        renderer.text(label, cx, y, sel ? G[12] : G[6], 1, 'center');
         if (sel) { renderer.redText('>', cx - 66, y, 1, 'left'); renderer.redText('<', cx + 66, y, 1, 'right'); }
       }
-      renderer.text('P1  W / S        P2  UP / DOWN', cx, 156, G[8], 1, 'center');
-      renderer.text('FIRST TO 10.  P PAUSE  M MUSIC  N SFX', cx, 168, G[7], 1, 'center');
+      renderer.text('P1  W / S        P2  UP / DOWN', cx, 158, G[8], 1, 'center');
+      renderer.text('FIRST TO 10.  P PAUSE  M MUSIC  N SFX', cx, 170, G[7], 1, 'center');
       if (blink()) renderer.text('PRESS ENTER', cx, 194, G[11], 1, 'center');
     } else if (game.screen === 'paused') {
       renderer.box(150, 60);

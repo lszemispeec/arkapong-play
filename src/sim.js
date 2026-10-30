@@ -265,8 +265,10 @@
   }
 
   // inputs: [{up, down}, {up, down}] for paddle 0 (left) and 1 (right).
-  // plugins: optional [{ onEvent(state, event, api) }]. Plugins must be
-  // deterministic too: use api.rand(state), never Math.random or Date.
+  // plugins: optional [{ onEvent(state, event, api), onTick(state, api) }].
+  // Plugins must be deterministic too: use api.rand(state), never
+  // Math.random or Date. onTick runs once per tick until the match is over;
+  // both hooks may return extra events.
   // Returns the list of events from this tick (for sound, effects, network).
   function step(state, inputs, plugins) {
     plugins = plugins || [];
@@ -280,9 +282,7 @@
     if (state.phase === 'point') {
       state.timer -= dt;
       if (state.timer <= 0) { state.phase = 'serve'; state.timer = C.SERVE_DELAY; }
-      return events;
-    }
-    if (state.phase === 'serve') {
+    } else if (state.phase === 'serve') {
       attachBall(state);
       state.timer -= dt;
       if (state.timer <= 0) {
@@ -290,9 +290,14 @@
         launch(state);
         emit(state, events, plugins, { type: 'serve', side: state.server });
       }
-      return events;
+    } else moveBall(state, events, plugins, dt);
+
+    if (state.phase !== 'over') {
+      for (var i = 0; i < plugins.length; i++) {
+        var extra = plugins[i].onTick ? plugins[i].onTick(state, api) : null;
+        if (extra) for (var k = 0; k < extra.length; k++) events.push(extra[k]);
+      }
     }
-    moveBall(state, events, plugins, dt);
     return events;
   }
 

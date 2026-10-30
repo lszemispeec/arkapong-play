@@ -98,6 +98,19 @@
       case 'serve':
         this.tone(bus, 'pulse12', 880, t, 0.05, 0.3);
         break;
+      case 'lemSplat':
+        this.hiss(bus, t, e.cause === 'ball' ? 0.18 : 0.12, 0.45, 'lowpass', 1800, 150);
+        this.tone(bus, 'square', e.cause === 'ball' ? 300 : 500, t, 0.12, 0.2, 90);
+        break;
+      case 'curse':
+        [0, 1, 2, 3, 4, 5].forEach(function (k) { this.tone(bus, 'pulse25', k % 2 ? 330 : 466, t + k * 0.07, 0.07, 0.3); }, this);
+        break;
+      case 'doorOpen':
+        this.tone(bus, 'square', 70, t, 0.4, 0.25, 110);
+        break;
+      case 'lemSpawn':
+        this.tone(bus, 'pulse12', 1200, t, 0.03, 0.12);
+        break;
       case 'vineWrap':
         this.tone(bus, 'square', 110, t, 0.7, 0.4, 55);
         this.hiss(bus, t, 0.5, 0.3, 'bandpass', 600, 200);

@@ -373,6 +373,27 @@
     }
   }
 
+  // ---------- lemmings ----------
+
+  var GOO = ['#4e1470', '#7a1fa8', '#a63be0'];
+  // 3x4 lemming, facing right. Colours follow the reference sheet.
+  var LEM_PAL = { 'G': '#18c018', 'S': '#f2d2c8', 'B': '#4848e8' };
+  var LEM_WALK = [['GG.', '.S.', 'BB.', 'S.S'], ['GG.', '.S.', '.BS', '.S.']];
+  var LEM_FALL = ['SGS', '.S.', '.B.', 'S.S'];
+  function mirror(rows) { return rows.map(function (r) { return r.split('').reverse().join(''); }); }
+
+  // Trap door on a brick top. open: 0 shut .. 1 wide open.
+  function drawDoor(ctx, d, open) {
+    var x = Math.round(d.x), y = d.y - 2;
+    rect(ctx, x, y, 7, 2, G[3]);
+    rect(ctx, x, y - 1, 7, 1, G[7]);
+    var gap = Math.round(open * 5);
+    if (gap) rect(ctx, x + 1 + ((5 - gap) >> 1), y, gap, 2, G[0]);
+    // Hatch leaves swing up as it opens.
+    var lift = Math.round(open * 3);
+    for (var k = 1; k <= lift; k++) { px(ctx, x, y - 1 - k, G[8]); px(ctx, x + 6, y - 1 - k, G[8]); }
+  }
+
   function Renderer(canvasEl) {
     this.canvas = canvasEl;
     this.ctx = canvasEl.getContext('2d');
@@ -529,6 +550,17 @@
         for (k = 0; k < 12; k++) this.particles.push({ x: e.x + (rng() * 16 - 8), y: e.y + (rng() * 8 - 4), vx: (rng() * 2 - 1) * 50, vy: -rng() * 50, c: G[6 + (rng() * 4 | 0)], life: 0.6 + rng() * 0.5, kind: 'chip' });
       } else if (e.type === 'paddleHit') {
         for (k = 0; k < 4; k++) this.particles.push({ x: e.x + 2, y: e.y + 2, vx: (e.side === 0 ? 1 : -1) * rng() * 60, vy: (rng() * 2 - 1) * 60, c: G[12], life: 0.15 + rng() * 0.1, kind: 'spark' });
+      } else if (e.type === 'lemSplat') {
+        // Purple splatter. A ball kill also smears the ball until next serve.
+        for (k = 0; k < (e.cause === 'ball' ? 14 : 9); k++) {
+          this.particles.push({ x: e.x, y: e.y, vx: (rng() * 2 - 1) * 45, vy: -rng() * (e.cause === 'floor' ? 30 : 70), c: GOO[rng() * 3 | 0], life: 3, kind: 'goo' });
+        }
+        if (e.cause === 'ball') for (k = 0; k < 3; k++) this.ballGoo.push({ x: rng() * 4 | 0, y: rng() * 4 | 0, c: GOO[1 + (rng() * 2 | 0)] });
+      } else if (e.type === 'curse') {
+        this.curseFlash = 2.5;
+        this.curseTarget = e.target;
+      } else if (e.type === 'serve') {
+        this.ballGoo = [];
       } else if (e.type === 'vineWrap') {
         this.wrapFlash = 3;
         this.shake = 0.3;
@@ -559,8 +591,9 @@
       p.vy += (p.kind === 'spark' ? 0 : p.kind === 'ember' ? -30 : 240) * dt;
       p.x += p.vx * dt; p.y += p.vy * dt;
       p.life -= dt;
-      if (p.kind === 'blood' && p.y >= A.bottom - 1) {
-        if (p.x >= A.left && p.x < A.right) this.floorStains.push({ x: p.x | 0, y: A.bottom - 1 - (this.rng() < 0.3 ? 1 : 0), c: this.rng() < 0.5 ? RED.dark : RED.deep });
+      if ((p.kind === 'blood' || p.kind === 'goo') && p.y >= A.bottom - 1) {
+        var stainC = p.kind === 'goo' ? GOO[this.rng() < 0.5 ? 0 : 1] : this.rng() < 0.5 ? RED.dark : RED.deep;
+        if (p.x >= A.left && p.x < A.right) this.floorStains.push({ x: p.x | 0, y: A.bottom - 1 - (this.rng() < 0.3 ? 1 : 0), c: stainC });
         continue;
       }
       var inside = p.kind === 'ember' ? p.x >= 0 && p.x < C.W : p.x > A.left && p.x < A.right;
@@ -569,6 +602,7 @@
     this.particles = keep;
     // Vines creep toward their target length instead of jumping.
     if (this.wrapFlash > 0) this.wrapFlash -= dt;
+    if (this.curseFlash > 0) this.curseFlash -= dt;
     for (var vi = 0; vi < 2; vi++) {
       var gap = this.vineTarget[vi] - this.vineShown[vi];
       this.vineShown[vi] += gap > 0 ? Math.min(gap, Math.max(12, gap * 2) * dt) : gap;
@@ -592,6 +626,9 @@
     this.vineShown = [0, 0];
     this.vineTarget = [0, 0];
     this.wrapFlash = 0;
+    this.ballGoo = [];
+    this.curseFlash = 0;
+    this.curseTarget = 0;
     this.brickStains = {};
     this.floorStains = [];
     this.particles = [];
@@ -633,15 +670,31 @@
       if (st) for (var k = 0; k < st.length; k++) px(ctx, br.x + st[k].x, br.y + st[k].y, st[k].c);
     }
 
+    // Lemmings mode: trap doors and lemmings.
+    var lm = state.ext && state.ext.lem;
+    if (lm) {
+      for (i = 0; i < lm.doors.length; i++) {
+        var dr = lm.doors[i];
+        var open = dr.left > 0 ? Math.min(1, dr.t / 0.6) : Math.max(0, Math.min(1, dr.close / 0.6));
+        drawDoor(ctx, dr, open);
+      }
+      for (i = 0; i < lm.lems.length; i++) {
+        var le = lm.lems[i];
+        var rows = le.falling ? LEM_FALL : LEM_WALK[((this.time * 6) | 0) + le.id & 1];
+        sprite(ctx, le.dir < 0 ? mirror(rows) : rows, Math.round(le.x), Math.round(le.y), LEM_PAL);
+      }
+    }
+
     // Paddles.
     for (i = 0; i < 2; i++) {
       var p = state.paddles[i];
+      if (p.hidden) continue;
       ctx.drawImage(this.paddle, Math.round(p.x) - 1, Math.round(p.y));
     }
     // A wrapped paddle: the winning vine runs taut from its end to the coils.
     if (vs && vs.wrapped >= 0) {
       var own = 1 - vs.wrapped, wp = state.paddles[vs.wrapped], tp = tips[own];
-      if (tp && this.vineShown[own] >= this.vines[own].pts.length - 1) {
+      if (tp && !wp.hidden && this.vineShown[own] >= this.vines[own].pts.length - 1) {
         vineLine(ctx, tp.x, tp.y, vs.wrapped === 1 ? wp.x - 1 : wp.x + wp.w, wp.y + wp.h / 2, (this.frame >> 4) % 2 ? VINE_PULSE : VINE_VIVID.stem);
         drawCoils(ctx, wp, this.frame);
       }
@@ -658,6 +711,7 @@
       var bx = Math.round(b.x), by = Math.round(b.y);
       rect(ctx, bx, by, 4, 4, G[13]);
       px(ctx, bx + 3, by + 3, G[9]); px(ctx, bx + 3, by, G[11]); px(ctx, bx, by + 3, G[11]);
+      for (i = 0; i < this.ballGoo.length; i++) px(ctx, bx + this.ballGoo[i].x, by + this.ballGoo[i].y, this.ballGoo[i].c);
       this.trail.push({ x: bx, y: by });
       if (this.trail.length > 3) this.trail.shift();
     } else this.trail = [];
@@ -675,8 +729,12 @@
     text(ctx, view.names[0], 57, 28, G[11], 1, 'center');
     text(ctx, view.names[1], 263, 28, G[11], 1, 'center');
     if (vs) {
-      text(ctx, 'VINE ' + vs.hits[0], 18, 229, G[9], 1, 'left');
-      text(ctx, 'VINE ' + vs.hits[1], C.W - 18, 229, G[9], 1, 'right');
+      var lk = lm ? lm.killed : null;
+      text(ctx, 'VINE ' + vs.hits[0] + (lk ? '  LEM ' + lk[0] : ''), 18, 229, G[9], 1, 'left');
+      text(ctx, (lk ? 'LEM ' + lk[1] + '  ' : '') + 'VINE ' + vs.hits[1], C.W - 18, 229, G[9], 1, 'right');
+    }
+    if (lm && lm.curse && this.curseFlash > 0 && (this.frame >> 3) % 2) {
+      text(ctx, view.names[this.curseTarget] + ' CURSED - BLINKING', 160, A.top + 16, GOO[2], 1, 'center', GOO[0]);
     }
     if (vs && vs.wrapped >= 0 && this.wrapFlash > 0 && (this.frame >> 3) % 2) {
       text(ctx, view.names[vs.wrapped] + ' ENTANGLED - HALF SPEED', 160, A.top + 6, VINE_VIVID.bud, 1, 'center', VINE_VIVID.shade);

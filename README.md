@@ -4,7 +4,7 @@ This repo holds only the playable build of Arkanog, a retro Pong-meets-Arkanoid 
 
 **Play:** https://lszemispeec.github.io/arkapong-play/
 
-Built from the private `arkapong` repo, commit `362427d`.
+Built from the private `arkapong` repo, commit `a131589`.
 
 ## Controls
 
@@ -14,4 +14,5 @@ Built from the private `arkapong` repo, commit `362427d`.
 | Up / Down arrows | P2 (right) up / down, or P1 when you play against the CPU |
 | Enter, or 1 / 2 | Start a mode |
 | P or Esc | Pause |
+| L (on the menu) | Lemmings mode on or off |
 | M / N | Music on or off / sound effects on or off |
