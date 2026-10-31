@@ -41,7 +41,7 @@
 
   function lem(state) {
     return state.ext.lem || (state.ext.lem = { doors: [], lems: [], wait: L.FIRST_DOOR, nextId: 0, killed: [0, 0], floor: 0, curse: [0, 0], blinkT: [0, 0],
-      roles: null, saved: [0, 0], home: 0, long: [0, 0], immune: [0, 0], slow: 0 });
+      roles: null, saved: [0, 0], home: 0, long: [0, 0], immune: [0, 0], slow: 0, slowSide: 0, slowPrev: 0 });
   }
 
   // roles: null for the plain mode, or e.g. ['good', 'evil'] for P1 good.
@@ -94,6 +94,11 @@
     return null;
   }
 
+  function setSpeed(b, speed) {
+    var k = speed / b.speed;
+    b.vx *= k; b.vy *= k; b.speed = speed;
+  }
+
   // The paddle whose top a lemming's feet cross this tick, if any.
   function paddleUnder(state, l, feet0) {
     for (var i = 0; i < 2; i++) {
@@ -143,6 +148,7 @@
       p.shield = true;
     } else if (name === 'slow') {
       data.slow = L.SLOW_TIME;
+      data.slowSide = side;
     } else if (name === 'cleanse') {
       data.curse[side] = 0;
       p.hidden = false;
@@ -218,11 +224,24 @@
         out.push({ type: 'powerEnd', side: i, name: 'long' });
       }
     }
+    // Slow ball helps only the saver: it is slow in the saver's half, and
+    // gets its own speed back when it crosses into the other half.
+    var sb = state.ball;
+    if (state.phase !== 'play') data.slowPrev = 0;
     if (data.slow > 0) {
       data.slow -= dt;
-      var sb = state.ball;
-      if (sb.speed > L.SLOW_SPEED) { var k0 = L.SLOW_SPEED / sb.speed; sb.vx *= k0; sb.vy *= k0; sb.speed = L.SLOW_SPEED; }
-      if (data.slow <= 0) out.push({ type: 'powerEnd', side: -1, name: 'slow' });
+      var mine = data.slowSide === 0 ? sb.x + sb.size / 2 < C.W / 2 : sb.x + sb.size / 2 > C.W / 2;
+      if (state.phase === 'play' && mine && data.slow > 0) {
+        if (sb.speed > L.SLOW_SPEED) {
+          // Keep any speed-up from paddle hits for when the ball leaves.
+          data.slowPrev = data.slowPrev ? data.slowPrev * sb.speed / L.SLOW_SPEED : sb.speed;
+          setSpeed(sb, L.SLOW_SPEED);
+        }
+      } else if (data.slowPrev) {
+        setSpeed(sb, data.slowPrev);
+        data.slowPrev = 0;
+      }
+      if (data.slow <= 0) out.push({ type: 'powerEnd', side: data.slowSide, name: 'slow' });
     }
 
     // Lemmings: walk, turn, fall, land, die.

@@ -861,7 +861,7 @@
     if (role === 'good') {
       if (lm.long[i] > 0) t += ' ' + POWER_TAGS.long;
       if (p.shield) t += ' ' + POWER_TAGS.shield;
-      if (lm.slow > 0) t += ' ' + POWER_TAGS.slow;
+      if (lm.slow > 0 && lm.slowSide === i) t += ' ' + POWER_TAGS.slow;
       if (lm.immune[i] > 0) t += ' ' + POWER_TAGS.cleanse;
     }
     return t;
