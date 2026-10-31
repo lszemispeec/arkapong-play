@@ -1,0 +1,8 @@
+{
+  "name": "arkanog",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Retro Pong-meets-Arkanoid game for the browser and kitty-graphics terminals",
+  "bin": { "arkanog-term": "term/run.js" },
+  "engines": { "node": ">=18" }
+}

@@ -4,7 +4,17 @@ This repo holds only the playable build of Arkanog, a retro Pong-meets-Arkanoid 
 
 **Play:** https://lszemispeec.github.io/arkapong-play/
 
-Built from the private `arkapong` repo, commit `cb862ad`.
+Built from the private `arkapong` repo, commit `cd1b451`.
+
+## Play in a terminal
+
+The game also runs inside terminals that support the kitty graphics protocol (Rex, kitty, Ghostty, WezTerm). You need Node.js 18 or later:
+
+```sh
+npx github:lszemispeec/arkapong-play             # add --lemmings, --demo, --scale N
+```
+
+Press Q or Ctrl+C to quit. The terminal has no sound.
 
 ## Controls
 
