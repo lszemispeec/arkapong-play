@@ -16,15 +16,14 @@
   }
 
   // upCodes / downCodes: KeyboardEvent.code values, e.g. ['KeyW'].
-  function KeyboardSource(upCodes, downCodes) {
-    this.upCodes = upCodes;
-    this.downCodes = downCodes;
+  // left/right codes are optional; they only move a paddle that can slide.
+  function KeyboardSource(upCodes, downCodes, leftCodes, rightCodes) {
+    this.codes = { up: upCodes, down: downCodes, left: leftCodes || [], right: rightCodes || [] };
   }
   KeyboardSource.prototype.poll = function () {
-    var up = false, down = false, i;
-    for (i = 0; i < this.upCodes.length; i++) up = up || !!keys[this.upCodes[i]];
-    for (i = 0; i < this.downCodes.length; i++) down = down || !!keys[this.downCodes[i]];
-    return { up: up, down: down };
+    var out = {};
+    for (var dir in this.codes) out[dir] = this.codes[dir].some(function (c) { return !!keys[c]; });
+    return out;
   };
 
   // Predicts where the ball crosses the paddle line, bouncing off the walls
@@ -60,8 +59,9 @@
       this.offset = (this.random() * 2 - 1) * spread;
     }
 
+    var slideTo = p.canSlide ? (side === 0 ? p.minX : p.maxX) : p.x;
     if (state.phase === 'play' && towards) {
-      if (this.wait > 0) { this.wait -= C.TICK; return { up: false, down: false }; }
+      if (this.wait > 0) { this.wait -= C.TICK; return { up: false, down: false, left: slideTo < p.x - 1, right: slideTo > p.x + 1 }; }
       var lineX = side === 0 ? p.x + p.w : p.x - b.size;
       var t = (lineX - b.x) / b.vx;
       var y = b.y + b.vy * t;
@@ -71,8 +71,24 @@
       y = lo + (m <= span ? m : 2 * span - m);
       target = y + b.size / 2 + this.offset;
     }
+    // A sliding (good) paddle goes home to defend while the ball comes, and
+    // otherwise moves under the nearest lemming it can reach to catch it.
+    var lem = state.ext && state.ext.lem;
+    if (p.canSlide && lem && !(state.phase === 'play' && towards)) {
+      var best = null, bestD = 1e9;
+      for (var i = 0; i < lem.lems.length; i++) {
+        var l = lem.lems[i];
+        if (l.on >= 0 || l.x + 3 < p.minX || l.x > p.maxX + p.w) continue;
+        var d = Math.abs(l.x - (p.x + p.w / 2)) + (l.falling ? 0 : 20);
+        if (d < bestD) { bestD = d; best = l; }
+      }
+      if (best) {
+        slideTo = Math.max(p.minX, Math.min(p.maxX, best.x + 1.5 - p.w / 2));
+        target = best.y + 4 + p.h / 2 + (best.falling ? 6 : 0);
+      }
+    }
     var dead = 3;
-    return { up: target < centre - dead, down: target > centre + dead };
+    return { up: target < centre - dead, down: target > centre + dead, left: slideTo < p.x - 1, right: slideTo > p.x + 1 };
   };
 
   // Placeholder for a future online mode. A transport (WebRTC data channel or

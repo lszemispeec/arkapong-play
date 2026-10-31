@@ -15,18 +15,27 @@
   // Input.NetworkSource; nothing else here needs to change.
   var MODES = {
     pvai: { label: 'PLAYER VS CPU', names: ['P1', 'CPU'],
-      sources: function () { return [new Input.KeyboardSource(['KeyW', 'ArrowUp'], ['KeyS', 'ArrowDown']), new Input.AISource()]; } },
+      sources: function () { return [new Input.KeyboardSource(['KeyW', 'ArrowUp'], ['KeyS', 'ArrowDown'], ['KeyA', 'ArrowLeft'], ['KeyD', 'ArrowRight']), new Input.AISource()]; } },
     pvp: { label: 'PLAYER VS PLAYER', names: ['P1', 'P2'],
-      sources: function () { return [new Input.KeyboardSource(['KeyW'], ['KeyS']), new Input.KeyboardSource(['ArrowUp'], ['ArrowDown'])]; } },
+      sources: function () { return [new Input.KeyboardSource(['KeyW'], ['KeyS'], ['KeyA'], ['KeyD']), new Input.KeyboardSource(['ArrowUp'], ['ArrowDown'], ['ArrowLeft'], ['ArrowRight'])]; } },
     demo: { label: 'DEMO', names: ['CPU', 'CPU'],
       sources: function () { return [new Input.AISource(), new Input.AISource()]; } }
   };
   var MENU = ['pvai', 'pvp'];
 
-  // Rules plugins (see Sim.step). Vines are always on; lemmings is a mode
-  // switch on the title screen.
-  function loadFlag(key) { try { return localStorage.getItem(key) === '1'; } catch (e) { return false; } }
-  function saveFlag(key, v) { try { localStorage.setItem(key, v ? '1' : '0'); } catch (e) { /* private mode */ } }
+  // Rules plugins (see Sim.step). Vines are always on. Lemmings is a switch
+  // on the title screen: off, on (both paddles evil), or good vs evil with
+  // P1 on either side.
+  var LEM_MODES = ['off', 'on', 'p1good', 'p1evil'];
+  var LEM_LABELS = { off: 'LEMMINGS OFF', on: 'LEMMINGS ON', p1good: 'GOOD P1 VS EVIL P2', p1evil: 'EVIL P1 VS GOOD P2' };
+  var LEM_ROLES = { p1good: ['good', 'evil'], p1evil: ['evil', 'good'] };
+  function loadLemMode() {
+    var v = params.get('lem');
+    if (v !== null) return v === '0' ? 'off' : v === 'good' ? 'p1good' : v === 'evil' ? 'p1evil' : 'on';
+    try { v = localStorage.getItem('arkanog.lemmings'); } catch (e) { v = null; }
+    return v === '1' ? 'on' : LEM_MODES.indexOf(v) > 0 ? v : 'off';
+  }
+  function saveLemMode(v) { try { localStorage.setItem('arkanog.lemmings', v); } catch (e) { /* private mode */ } }
   var plugins = [K.Vines];
 
   var game = {
@@ -36,14 +45,17 @@
     state: null,
     sources: null,
     acc: 0,
-    lemmings: params.has('lem') ? params.get('lem') !== '0' : loadFlag('arkanog.lemmings')
+    lemMode: loadLemMode(),
+    lemmings: false
   };
+  game.lemmings = game.lemMode !== 'off';
 
   function newMatch(mode) {
     game.mode = mode;
     game.state = Sim.create({ seed: (Math.random() * 0x7fffffff) | 0, mode: mode });
     game.sources = MODES[mode].sources();
     plugins = game.lemmings ? [K.Vines, K.Lemmings] : [K.Vines];
+    if (game.lemmings) K.Lemmings.setup(game.state, LEM_ROLES[game.lemMode] || null);
     game.acc = 0;
     renderer.resetMatch();
   }
@@ -101,8 +113,9 @@
   }
   // The demo behind the title restarts so the switch shows at once.
   function toggleLemmings() {
-    game.lemmings = !game.lemmings;
-    saveFlag('arkanog.lemmings', game.lemmings);
+    game.lemMode = LEM_MODES[(LEM_MODES.indexOf(game.lemMode) + 1) % LEM_MODES.length];
+    game.lemmings = game.lemMode !== 'off';
+    saveLemMode(game.lemMode);
     newMatch('demo');
     sound.blip();
   }
@@ -134,12 +147,13 @@
       renderer.text('PONG MEETS ARKANOID', cx, 89, G[8], 1, 'center');
       for (var i = 0; i <= MENU.length; i++) {
         var sel = i === game.menuIndex, y = 106 + i * 13;
-        var label = i < MENU.length ? (i + 1) + '  ' + MODES[MENU[i]].label : 'L  LEMMINGS ' + (game.lemmings ? 'ON' : 'OFF');
+        var label = i < MENU.length ? (i + 1) + '  ' + MODES[MENU[i]].label : 'L  ' + LEM_LABELS[game.lemMode];
         renderer.text(label, cx, y, sel ? G[12] : G[6], 1, 'center');
         if (sel) { renderer.redText('>', cx - 66, y, 1, 'left'); renderer.redText('<', cx + 66, y, 1, 'right'); }
       }
-      renderer.text('P1  W / S        P2  UP / DOWN', cx, 158, G[8], 1, 'center');
-      renderer.text('FIRST TO 10.  P PAUSE  M MUSIC  N SFX', cx, 170, G[7], 1, 'center');
+      renderer.text('P1  W A S D        P2  ARROWS', cx, 156, G[8], 1, 'center');
+      renderer.text('FIRST TO 10.  P PAUSE  M MUSIC  N SFX', cx, 168, G[7], 1, 'center');
+      if (LEM_ROLES[game.lemMode]) renderer.text('GOOD: A/D OR LEFT/RIGHT SLIDE', cx, 180, '#d8b860', 1, 'center');
       if (blink()) renderer.text('PRESS ENTER', cx, 194, G[11], 1, 'center');
     } else if (game.screen === 'paused') {
       renderer.box(150, 60);

@@ -9,7 +9,7 @@
     ARENA: { left: 20, right: 300, top: 44, bottom: 222 },
     TICK: 1 / 120,
     WIN_SCORE: 10,
-    PADDLE: { w: 8, h: 34, speed: 150, inset: 10 },
+    PADDLE: { w: 8, h: 34, speed: 150, slide: 90, inset: 10 },
     BALL: { size: 4, speed: 115, maxSpeed: 270, accel: 1.045 },
     // tan(60deg): steepest bounce off a paddle edge.
     MAX_SLOPE: 1.7,
@@ -72,8 +72,11 @@
       x: side === 0 ? C.ARENA.left + p.inset : C.ARENA.right - p.inset - p.w,
       y: Math.round((C.ARENA.top + C.ARENA.bottom - p.h) / 2),
       w: p.w, h: p.h, vy: 0,
-      // Plugins may change this, e.g. to slow a paddle down.
-      speedScale: 1
+      // Plugins may change these: speedScale slows the paddle; hidden lets
+      // the ball pass through; shield stops one ball behind the paddle;
+      // canSlide with minX..maxX lets it move left and right.
+      speedScale: 1, hidden: false, shield: false,
+      canSlide: false, minX: 0, maxX: 0
     };
   }
 
@@ -157,15 +160,31 @@
     return null;
   }
 
+  // Bricks block paddles; this only matters for a paddle that slides out.
+  function paddleInBrick(state, p) {
+    for (var i = 0; i < state.bricks.length; i++) {
+      var br = state.bricks[i];
+      if (br.hp > 0 && p.x < br.x + br.w && p.x + p.w > br.x && p.y < br.y + br.h && p.y + p.h > br.y) return true;
+    }
+    return false;
+  }
+
   function movePaddles(state, inputs, dt) {
     var A = C.ARENA;
     for (var i = 0; i < 2; i++) {
       var p = state.paddles[i], inp = inputs[i] || {};
       var axis = (inp.down ? 1 : 0) - (inp.up ? 1 : 0);
       p.vy = axis * C.PADDLE.speed * (p.speedScale || 1);
+      var oy = p.y;
       p.y += p.vy * dt;
       if (p.y < A.top) p.y = A.top;
       if (p.y + p.h > A.bottom) p.y = A.bottom - p.h;
+      if (p.y !== oy && paddleInBrick(state, p)) p.y = oy;
+      if (p.canSlide) {
+        var ox = p.x, ax = (inp.right ? 1 : 0) - (inp.left ? 1 : 0);
+        p.x = Math.max(p.minX, Math.min(p.maxX, p.x + ax * C.PADDLE.slide * (p.speedScale || 1) * dt));
+        if (p.x !== ox && paddleInBrick(state, p)) p.x = ox;
+      }
     }
   }
 
@@ -201,7 +220,7 @@
       var hitPaddle = false;
       for (var i = 0; i < 2; i++) {
         var p = state.paddles[i];
-        if (!overlaps(b, p)) continue;
+        if (p.hidden || !overlaps(b, p)) continue;
         var front = p.side === 0 ? (b.vx < 0 && px >= p.x + p.w - 0.001) : (b.vx > 0 && px + b.size <= p.x + 0.001);
         if (front) {
           b.x = p.side === 0 ? p.x + p.w : p.x - b.size;
@@ -231,7 +250,7 @@
       }
       for (var j = 0; j < 2; j++) {
         var q = state.paddles[j];
-        if (!overlaps(b, q)) continue;
+        if (q.hidden || !overlaps(b, q)) continue;
         // Ball touches a paddle end, or the paddle moved into it: push it out.
         // If the ball was moving into that end it is a real hit, so it gets the
         // same speed-up, rally count and event as a face hit.
@@ -245,8 +264,14 @@
         if (b.y + b.size > A.bottom) b.y = A.bottom - b.size;
       }
 
-      if (b.x + b.size < A.left) return score(state, events, plugins, 1);
-      if (b.x > A.right) return score(state, events, plugins, 0);
+      // A shield behind a paddle sends the ball back once.
+      var out = b.x + b.size < A.left ? 0 : b.x > A.right ? 1 : -1;
+      if (out >= 0 && state.paddles[out].shield) {
+        state.paddles[out].shield = false;
+        b.x = out === 0 ? A.left : A.right - b.size;
+        b.vx = out === 0 ? Math.abs(b.vx) : -Math.abs(b.vx);
+        emit(state, events, plugins, { type: 'shieldBlock', side: out, x: b.x, y: b.y });
+      } else if (out >= 0) return score(state, events, plugins, 1 - out);
     }
   }
 
@@ -264,7 +289,8 @@
     }
   }
 
-  // inputs: [{up, down}, {up, down}] for paddle 0 (left) and 1 (right).
+  // inputs: [{up, down, left, right}, ...] for paddle 0 (left) and 1 (right);
+  // left and right only move a paddle that can slide.
   // plugins: optional [{ onEvent(state, event, api), onTick(state, api) }].
   // Plugins must be deterministic too: use api.rand(state), never
   // Math.random or Date. onTick runs once per tick until the match is over;

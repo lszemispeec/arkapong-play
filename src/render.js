@@ -376,6 +376,10 @@
   // ---------- lemmings ----------
 
   var GOO = ['#4e1470', '#7a1fa8', '#a63be0'];
+  // Good-paddle colours: halo gold and the pale shield.
+  var HOLY = { gold: '#ffe27a', light: '#eaf6ff', mid: '#9fc3e0' };
+  var POWER_NAMES = { long: 'LONG PADDLE', shield: 'STONE SHIELD', slow: 'SLOW BALL', cleanse: 'CLEANSE' };
+  var POWER_TAGS = { long: 'LONG', shield: 'SHLD', slow: 'SLOW', cleanse: 'PURE' };
   // 3x4 lemming, facing right. Colours follow the reference sheet.
   var LEM_PAL = { 'G': '#18c018', 'S': '#f2d2c8', 'B': '#4848e8' };
   var LEM_WALK = [['GG.', '.S.', 'BB.', 'S.S'], ['GG.', '.S.', '.BS', '.S.']];
@@ -418,7 +422,7 @@
     this.resetMatch();
     this.niches = [[46, 1], [252, 1]];
     this.buildBackground();
-    this.buildPaddle();
+    this.paddles = {};
     this.buildGlow();
   }
 
@@ -471,18 +475,24 @@
     this.bg = bg.c;
   };
 
-  Renderer.prototype.buildPaddle = function () {
-    var w = C.PADDLE.w + 2, h = C.PADDLE.h, p = canvas(w, h), ctx = p.ctx, rng = makeRng(9);
-    var shaft = [G[0], G[8], G[12], G[12], G[11], G[10], G[9], G[7], G[5], G[0]];
+  // Marble pillar of height h. role 'good' gets a gilded capital and base,
+  // 'evil' gets darker stone with red veins; anything else is plain.
+  Renderer.prototype.paddleSprite = function (h, role) {
+    var key = h + ':' + (role || '');
+    if (this.paddles[key]) return this.paddles[key];
+    var w = C.PADDLE.w + 2, p = canvas(w, h), ctx = p.ctx, rng = makeRng(9);
+    var shaft = role === 'evil' ? [G[0], G[6], G[9], G[9], G[8], G[7], G[6], G[5], G[3], G[0]]
+      : [G[0], G[8], G[12], G[12], G[11], G[10], G[9], G[7], G[5], G[0]];
     for (var y = 0; y < h; y++) for (var x = 1; x < w - 1; x++) px(ctx, x, y, shaft[x]);
     // Marble veins.
-    for (var v = 0; v < 3; v++) crackLine(ctx, 1, 4 + v * 9, w - 2, 10, rng, G[6], 6);
+    for (var v = 0; v * 9 + 4 < h - 6; v++) crackLine(ctx, 1, 4 + v * 9, w - 2, 10, rng, role === 'evil' ? RED.deep : G[6], 6);
     // Capital and base.
     var cap = ['1111111111', '1222222221', '.13333331.'];
-    var pal = { '1': G[7], '2': G[12], '3': G[9] };
+    var pal = role === 'good' ? { '1': '#b8913a', '2': '#f2dc8c', '3': '#d8b860' }
+      : role === 'evil' ? { '1': G[4], '2': G[8], '3': RED.deep } : { '1': G[7], '2': G[12], '3': G[9] };
     sprite(ctx, cap, 0, 0, pal);
     sprite(ctx, cap.slice().reverse(), 0, h - 3, pal);
-    this.paddle = p.c;
+    return (this.paddles[key] = p.c);
   };
 
   // Dithered glow halo: a fixed noise per pixel compared with a flickering
@@ -574,6 +584,17 @@
           this.particles.push({ x: e.x, y: e.y, vx: (rng() * 2 - 1) * 70, vy: -rng() * (e.cause === 'floor' ? 55 : 100), c: GOO[rng() * 3 | 0], life: 3, kind: 'goo' });
         }
         if (e.cause === 'ball') for (k = 0; k < 3; k++) this.ballGoo.push({ x: rng() * 4 | 0, y: rng() * 4 | 0, c: GOO[1 + (rng() * 2 | 0)] });
+      } else if (e.type === 'lemSaved' || e.type === 'lemHome') {
+        for (k = 0; k < (e.type === 'lemHome' ? 10 : 6); k++) {
+          this.particles.push({ x: e.x, y: e.y, vx: (rng() * 2 - 1) * 30, vy: -20 - rng() * 40, c: rng() < 0.5 ? HOLY.gold : HOLY.light, life: 0.5 + rng() * 0.4, kind: 'ember' });
+        }
+      } else if (e.type === 'power') {
+        this.powerFlash = 3;
+        this.powerText = POWER_NAMES[e.name];
+        this.powerSide = e.side;
+      } else if (e.type === 'shieldBlock') {
+        this.shake = 0.2;
+        for (k = 0; k < 14; k++) this.particles.push({ x: e.x + 2, y: e.y + 2, vx: (e.side === 0 ? 1 : -1) * rng() * 80, vy: (rng() * 2 - 1) * 70, c: HOLY.light, life: 0.3 + rng() * 0.3, kind: 'spark' });
       } else if (e.type === 'curse') {
         this.curseFlash = 2.5;
         this.curseTarget = e.target;
@@ -634,6 +655,7 @@
     // Vines creep toward their target length instead of jumping.
     if (this.wrapFlash > 0) this.wrapFlash -= dt;
     if (this.curseFlash > 0) this.curseFlash -= dt;
+    if (this.powerFlash > 0) this.powerFlash -= dt;
     for (var vi = 0; vi < 2; vi++) {
       var gap = this.vineTarget[vi] - this.vineShown[vi];
       this.vineShown[vi] += gap > 0 ? Math.min(gap, Math.max(12, gap * 2) * dt) : gap;
@@ -673,6 +695,7 @@
     this.dripClock = 0;
     this.curseFlash = 0;
     this.curseTarget = 0;
+    this.powerFlash = 0;
     this.brickStains = {};
     this.floorStains = [];
     this.particles = [];
@@ -726,14 +749,20 @@
         var le = lm.lems[i];
         var rows = le.falling ? LEM_FALL : LEM_WALK[((this.time * 6) | 0) + le.id & 1];
         sprite(ctx, le.dir < 0 ? mirror(rows) : rows, Math.round(le.x), Math.round(le.y), LEM_PAL);
+        if (le.saved) px(ctx, Math.round(le.x) + 1, Math.round(le.y) - 1, HOLY.gold);
       }
     }
 
     // Paddles.
     for (i = 0; i < 2; i++) {
       var p = state.paddles[i];
+      if (p.shield) {
+        // Stone shield: a pale shimmering line at the chasm edge.
+        var sx = i === 0 ? A.left - 1 : A.right;
+        for (var sy = A.top; sy < A.bottom; sy++) if (((sy + (this.frame >> 2)) % 4) < 3) px(ctx, sx, sy, (sy + (this.frame >> 3)) % 8 < 4 ? HOLY.light : HOLY.mid);
+      }
       if (p.hidden) continue;
-      ctx.drawImage(this.paddle, Math.round(p.x) - 1, Math.round(p.y));
+      ctx.drawImage(this.paddleSprite(p.h, lm && lm.roles ? lm.roles[i] : ''), Math.round(p.x) - 1, Math.round(p.y));
       var pst = this.paddleStains[i];
       for (var q2 = 0; q2 < pst.length; q2++) px(ctx, Math.round(p.x) - 1 + pst[q2].x, Math.round(p.y) + pst[q2].y, pst[q2].c);
     }
@@ -776,9 +805,12 @@
     text(ctx, view.names[0], 57, 28, G[11], 1, 'center');
     text(ctx, view.names[1], 263, 28, G[11], 1, 'center');
     if (vs) {
-      var lk = lm ? lm.killed : null;
-      text(ctx, 'VINE ' + vs.hits[0] + (lk ? '  LEM ' + lk[0] : ''), 18, 229, G[9], 1, 'left');
-      text(ctx, (lk ? 'LEM ' + lk[1] + '  ' : '') + 'VINE ' + vs.hits[1], C.W - 18, 229, G[9], 1, 'right');
+      var tags = [this.hudLem(state, lm, 0), this.hudLem(state, lm, 1)];
+      text(ctx, 'VINE ' + vs.hits[0] + tags[0], 18, 229, G[9], 1, 'left');
+      text(ctx, tags[1].trim() + (tags[1] ? '  ' : '') + 'VINE ' + vs.hits[1], C.W - 18, 229, G[9], 1, 'right');
+    }
+    if (this.powerFlash > 0 && (this.frame >> 3) % 2) {
+      text(ctx, view.names[this.powerSide] + ' POWER: ' + this.powerText, 160, A.top + 26, HOLY.gold, 1, 'center', '#5a4410');
     }
     if (lm && lm.curse && this.curseFlash > 0 && (this.frame >> 3) % 2) {
       text(ctx, view.names[this.curseTarget] + ' CURSED - BLINKING', 160, A.top + 16, GOO[2], 1, 'center', GOO[0]);
@@ -818,6 +850,21 @@
     for (var s = 0; s < small.length; s++) for (var j = 0; j < SMALL_EYES.length; j++) {
       px(ctx, small[s][0] + SMALL_EYES[j][0], small[s][1] + SMALL_EYES[j][1], pulse > 0.5 ? RED.mid : RED.deep);
     }
+  };
+
+  // Lemmings part of the floor counter for one side: kills, or saves for the
+  // good paddle, plus tags for active power-ups.
+  Renderer.prototype.hudLem = function (state, lm, i) {
+    if (!lm) return '';
+    var role = lm.roles ? lm.roles[i] : 'evil', p = state.paddles[i];
+    var t = role === 'good' ? '  SAVED ' + lm.saved[i] : '  LEM ' + lm.killed[i];
+    if (role === 'good') {
+      if (lm.long[i] > 0) t += ' ' + POWER_TAGS.long;
+      if (p.shield) t += ' ' + POWER_TAGS.shield;
+      if (lm.slow > 0) t += ' ' + POWER_TAGS.slow;
+      if (lm.immune[i] > 0) t += ' ' + POWER_TAGS.cleanse;
+    }
+    return t;
   };
 
   // Darkens the arena with a checkerboard so overlay text reads clearly.

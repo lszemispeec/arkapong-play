@@ -102,6 +102,23 @@
         this.hiss(bus, t, e.cause === 'ball' ? 0.18 : 0.12, 0.45, 'lowpass', 1800, 150);
         this.tone(bus, 'square', e.cause === 'ball' ? 300 : 500, t, 0.12, 0.2, 90);
         break;
+      case 'lemSaved':
+        this.tone(bus, 'pulse12', 1320, t, 0.06, 0.2);
+        this.tone(bus, 'pulse12', 1760, t + 0.06, 0.08, 0.2);
+        break;
+      case 'lemHome':
+        this.tone(bus, 'triangle', 880, t, 0.15, 0.3, 1320);
+        break;
+      case 'power':
+        [72, 76, 79, 84].forEach(function (m, k) { this.tone(bus, 'pulse25', midi(m), t + k * 0.08, k === 3 ? 0.4 : 0.09, 0.35); }, this);
+        break;
+      case 'powerEnd':
+        this.tone(bus, 'pulse25', 660, t, 0.15, 0.2, 330);
+        break;
+      case 'shieldBlock':
+        this.tone(bus, 'square', 1100, t, 0.25, 0.35, 550);
+        this.hiss(bus, t, 0.2, 0.3, 'highpass', 4000);
+        break;
       case 'curse':
         [0, 1, 2, 3, 4, 5].forEach(function (k) { this.tone(bus, 'pulse25', k % 2 ? 330 : 466, t + k * 0.07, 0.07, 0.3); }, this);
         break;
