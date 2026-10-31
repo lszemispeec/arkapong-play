@@ -169,7 +169,29 @@
     return false;
   }
 
-  function movePaddles(state, inputs, dt) {
+  // A paddle that moved onto the ball pushes it out the shortest way that
+  // keeps it in the arena. Out through the face is a real hit and bounces;
+  // out over an end bounces off that end. Without this, a paddle moving onto
+  // the ball (or squeezing it against a wall) let it slip through.
+  function pushBall(state, p, events, plugins) {
+    var b = state.ball, A = C.ARENA;
+    if (state.phase !== 'play' || p.hidden || !overlaps(b, p)) return;
+    var face = p.side === 0 ? p.x + p.w : p.x - b.size, back = p.side === 0 ? p.x - b.size : p.x + p.w;
+    var opts = [
+      { to: 'face', d: Math.abs(face - b.x) },
+      { to: 'back', d: Math.abs(back - b.x) },
+      { to: 'top', d: b.y + b.size - p.y, ok: p.y - b.size >= A.top },
+      { to: 'bottom', d: p.y + p.h - b.y, ok: p.y + p.h + b.size <= A.bottom }
+    ].filter(function (o) { return o.ok !== false; });
+    opts.sort(function (a, c) { return a.d - c.d; });
+    var to = opts[0].to, toward = p.side === 0 ? b.vx < 0 : b.vx > 0;
+    if (to === 'face') { b.x = face; if (toward) paddleBounce(state, events, plugins, p, b); }
+    else if (to === 'back') b.x = back;
+    else if (to === 'top') { var inTop = b.vy > 0; b.y = p.y - b.size; b.vy = -Math.abs(b.vy); if (inTop) endBounce(state, events, plugins, p, b, -1); }
+    else { var inBot = b.vy < 0; b.y = p.y + p.h; b.vy = Math.abs(b.vy); if (inBot) endBounce(state, events, plugins, p, b, 1); }
+  }
+
+  function movePaddles(state, inputs, dt, events, plugins) {
     var A = C.ARENA;
     for (var i = 0; i < 2; i++) {
       var p = state.paddles[i], inp = inputs[i] || {};
@@ -185,6 +207,7 @@
         p.x = Math.max(p.minX, Math.min(p.maxX, p.x + ax * C.PADDLE.slide * (p.speedScale || 1) * dt));
         if (p.x !== ox && paddleInBrick(state, p)) p.x = ox;
       }
+      pushBall(state, p, events, plugins);
     }
   }
 
@@ -303,7 +326,7 @@
     state.tick += 1;
     if (state.phase === 'over') return events;
 
-    movePaddles(state, inputs, dt);
+    movePaddles(state, inputs, dt, events, plugins);
 
     if (state.phase === 'point') {
       state.timer -= dt;
@@ -324,6 +347,8 @@
         if (extra) for (var k = 0; k < extra.length; k++) events.push(extra[k]);
       }
     }
+    // A plugin may have shown or grown a paddle over the ball.
+    for (var j = 0; j < 2; j++) pushBall(state, state.paddles[j], events, plugins);
     return events;
   }
 

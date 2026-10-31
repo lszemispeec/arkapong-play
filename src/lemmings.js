@@ -10,7 +10,7 @@
 // crushes lemmings that land on it. Only its kills count. The good paddle can
 // also slide toward the middle. A lemming that lands on top of it is saved and
 // walks on it; stepping off is safe when the paddle is on or near the floor.
-// Every 10 saves give the good player a random power-up.
+// Every 5 saves give the good player a random power-up.
 //
 // All data lives in state.ext.lem, so it is part of snapshots and stays
 // deterministic.
@@ -31,7 +31,7 @@
     CURSE_EVERY: 10,          // kills per curse
     CURSE_TIME: 10,           // seconds the cursed paddle blinks
     BLINK: [0.05, 0.45],      // seconds per visible or hidden spell
-    POWER_EVERY: 10,          // saves per power-up
+    POWER_EVERY: 5,           // saves per power-up
     SAFE_DROP: C.BRICK.h + C.BRICK.gap, // a paddle this close to the floor lets lemmings off safely
     LONG_H: 50, LONG_TIME: 15,
     SLOW_SPEED: 150, SLOW_TIME: 10,
